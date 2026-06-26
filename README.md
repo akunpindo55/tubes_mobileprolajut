@@ -8,6 +8,14 @@
 
 ---
 
+## Link terkait repositori backend laravel
+
+https://github.com/faniamal07-dev/TugasBesar_Backend
+
+## Link aplikasi berbasis website
+
+https://tugas-besar-webdanmobile.vercel.app/
+
 ## 📱 Deskripsi Proyek
 
 **Campus Connect** adalah aplikasi mobile komunikasi dan kolaborasi berbasis mahasiswa yang menyediakan untuk interaksi sosial, diskusi akademik, dan berbagi informasi di lingkungan kampus. Aplikasi ini dirancang untuk memfasilitasi komunikasi real-time antara mahasiswa, mendukung pembelajaran kolaboratif, dan menciptakan komunitas virtual yang aktif.
@@ -52,6 +60,7 @@ lib/
 ## ⚙️ Teknologi yang Digunakan
 
 **Framework & Bahasa:**
+
 - **Framework:** Flutter 3.12.2
 - **Bahasa:** Dart 3.12.2
 - **State Management:** Riverpod ^2.6.1
@@ -60,6 +69,7 @@ lib/
 - **Storage:** flutter_secure_storage ^10.3.1
 
 **Desain & UI:**
+
 - **Font:** Google Fonts (Outfit)
 - **Ikon:** Lucide Icons Flutter
 - **Animasi:** Lottie
@@ -73,32 +83,38 @@ lib/
 ## 📌 Fitur Utama
 
 ### 🔐 Otentikasi & Keamanan
+
 - Login multi-role (mahasiswa, dosen, admin)
 - Token aman di FlutterSecureStorage
 - Manajemen sesi & logout
 
 ### 💬 Chat & Pesan
+
 - Real-time messaging
 - Kirim media (foto, video, dokumen)
 - Percakapan direct & grup
 - Hapus percakapan per user
 
 ### 📚 Forum & Diskusi
+
 - Buat & kelola forum
 - Topik diskusi dengan komentar nested
 - Reaksi & repost konten
 
 ### 🔔 Notifikasi
+
 - Notifikasi real-time
 - Mark as read / read all
 - Hapus notifikasi
 
 ### 👤 Profil & Pengaturan
+
 - Edit profil & avatar
 - Ganti password
 - Blokir pengguna
 
 ### 📊 Laporan
+
 - Laporkan konten (postingan, user)
 
 ---
@@ -111,6 +127,7 @@ lib/
 <img src="img/loginscreen2.jpg" width="200" alt="Login Screen 2">
 
 **Integrasi REST API:**
+
 - `POST /api/v1/auth/register` - Mendaftarkan akun baru
 - `POST /api/v1/auth/login` - Autentikasi (email/username + password), mengembalikan token
 - Token disimpan di FlutterSecureStorage via AuthNotifier
@@ -124,6 +141,7 @@ lib/
 <img src="img/buatfeedbarumodal.jpg" width="200" alt="Buat Postingan Baru">
 
 **Integrasi REST API:**
+
 - `GET /api/v1/posts?limit=` - Memuat feed postingan (paginated) via FeedNotifier
 - `POST /api/v1/posts` - Membuat postingan baru dengan upload media
 - `POST /api/v1/posts/{id}/reactions` - Toggle reaksi (like/love/dll), hapus jika sudah ada
@@ -140,6 +158,7 @@ lib/
 <img src="img/directmessagescreen.jpg" width="200" alt="Direct Message">
 
 **Integrasi REST API:**
+
 - `GET /api/v1/conversations` - Daftar percakapan user
 - `POST /api/v1/conversations` - Membuat chat baru (direct/group)
 - `GET /api/v1/conversations/{id}/messages?cursor=` - Riwayat pesan (cursor pagination)
@@ -157,6 +176,7 @@ lib/
 <img src="img/join new forum.jpg" width="200" alt="Join Forum">
 
 **Integrasi REST API:**
+
 - `GET /api/v1/forums` - Daftar forum publik
 - `GET /api/v1/forums/my` - Forum yang diikuti user
 - `POST /api/v1/forums` - Buat forum baru
@@ -171,6 +191,7 @@ lib/
 <img src="img/komentarmodal.jpg" width="200" alt="Komentar Modal">
 
 **Integrasi REST API:**
+
 - `POST /api/v1/topics/{id}/comments` - Kirim komentar (mendukung nested reply via `parent_comment_id`)
 - `DELETE /api/v1/comments/{id}` - Hapus komentar sendiri
 - Upload media pendukung ke komentar
@@ -181,6 +202,7 @@ lib/
 <img src="img/deletehostorynotif.jpg" width="200" alt="Hapus Notifikasi">
 
 **Integrasi REST API:**
+
 - `GET /api/v1/notifications?limit=` - Daftar notifikasi
 - `GET /api/v1/notifications/unread-count` - Jumlah notifikasi belum dibaca
 - `PUT /api/v1/notifications/{id}/read` - Tandai notifikasi dibaca
@@ -194,12 +216,14 @@ lib/
 <img src="img/deleteconfirmmodal.jpg" width="200" alt="Modal Hapus">
 
 **Integrasi REST API:**
+
 - `DELETE /api/v1/conversations/{id}` - Hapus percakapan dari sisi user
 - `DELETE /api/v1/messages/{id}` - Hapus pesan tertentu
 
 ### 8. Profil & Pelaporan
 
 **Integrasi REST API:**
+
 - `GET /api/v1/users/{username}` - Lihat profil pengguna lain
 - `PUT /api/v1/users/profile` - Update profil sendiri
 - `POST /api/v1/users/avatar` - Upload foto profil
