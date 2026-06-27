@@ -204,8 +204,10 @@ class ForumNotifier extends StateNotifier<ForumState> {
         );
         return true;
       }
+      print('[createForum] API error: ${response.data}');
       return false;
-    } catch (_) {
+    } catch (e) {
+      print('[createForum] exception: $e');
       return false;
     }
   }

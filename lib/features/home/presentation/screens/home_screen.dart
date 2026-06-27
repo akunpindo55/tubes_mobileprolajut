@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -513,6 +514,10 @@ class _FeedTab extends ConsumerWidget {
                 height: 1.4,
               ),
             ),
+            if (post.media.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _buildPostMedia(context, post.media),
+            ],
             const SizedBox(height: 16),
 
             // Footer Actions
@@ -597,6 +602,87 @@ class _FeedTab extends ConsumerWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPostMedia(BuildContext context, List<dynamic> media) {
+    final count = media.length;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: count == 1
+          ? _buildMediaItem(context, media[0], double.infinity, 280)
+          : count == 2
+              ? Row(
+                  children: [
+                    Expanded(child: _buildMediaItem(context, media[0], double.infinity, 220)),
+                    const SizedBox(width: 4),
+                    Expanded(child: _buildMediaItem(context, media[1], double.infinity, 220)),
+                  ],
+                )
+              : count == 3
+                  ? Column(
+                      children: [
+                        _buildMediaItem(context, media[0], double.infinity, 220),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(child: _buildMediaItem(context, media[1], double.infinity, 120)),
+                            const SizedBox(width: 4),
+                            Expanded(child: _buildMediaItem(context, media[2], double.infinity, 120)),
+                          ],
+                        ),
+                      ],
+                    )
+                  : GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 4,
+                      crossAxisSpacing: 4,
+                      childAspectRatio: 1.2,
+                      children: media.take(4).map((m) => _buildMediaItem(context, m, double.infinity, null)).toList(),
+                    ),
+    );
+  }
+
+  Widget _buildMediaItem(BuildContext context, dynamic mediaItem, double width, double? height) {
+    final url = mediaItem['media_url'] ?? '';
+    final type = mediaItem['media_type'] ?? 'image';
+    final child = type == 'video'
+        ? Stack(
+            alignment: Alignment.center,
+            children: [
+              Image.network(url, width: width, height: height, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(LucideIcons.file, size: 32)),
+              const Icon(LucideIcons.playCircle, color: Colors.white, size: 40),
+            ],
+          )
+        : Image.network(url, width: width, height: height, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(LucideIcons.file, size: 32));
+
+    return GestureDetector(
+      onTap: () => _showMediaPreview(context, url, type),
+      child: child,
+    );
+  }
+
+  void _showMediaPreview(BuildContext context, String url, String type) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              child: type == 'video'
+                  ? const Icon(LucideIcons.video, color: Colors.white, size: 64)
+                  : Image.network(url, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(LucideIcons.file, color: Colors.white, size: 64)),
+            ),
+          ),
         ),
       ),
     );
@@ -710,6 +796,7 @@ class _FeedTab extends ConsumerWidget {
   void _showCreatePostSheet(BuildContext context, WidgetRef ref) {
     final controller = TextEditingController();
     String visibility = 'public';
+    List<String> selectedFiles = [];
 
     showModalBottomSheet(
       context: context,
@@ -782,6 +869,44 @@ class _FeedTab extends ConsumerWidget {
                     placeholder:
                         'Ceritakan kejadian seru di kampus hari ini...',
                   ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          LucideIcons.image,
+                          color: selectedFiles.isNotEmpty ? AppColors.babyBlue : AppColors.textMuted,
+                        ),
+                        onPressed: () async {
+                          final result = await FilePicker.platform.pickFiles(
+                            type: FileType.any,
+                            allowMultiple: true,
+                          );
+                          if (result != null) {
+                            setModalState(() {
+                              selectedFiles = result.paths.whereType<String>().toList();
+                            });
+                          }
+                        },
+                      ),
+                      if (selectedFiles.isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        Text(
+                          '${selectedFiles.length} file',
+                          style: GoogleFonts.outfit(
+                            fontSize: 12,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(LucideIcons.x, size: 16),
+                          onPressed: () {
+                            setModalState(() => selectedFiles = []);
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
                   const SizedBox(height: 20),
                   ClayButton(
                     color: AppColors.softPeach,
@@ -792,6 +917,7 @@ class _FeedTab extends ConsumerWidget {
                             .createPost(
                               controller.text.trim(),
                               visibility: visibility,
+                              filePaths: selectedFiles.isNotEmpty ? selectedFiles : null,
                             );
                         if (context.mounted) {
                           Navigator.pop(context);
@@ -1467,8 +1593,17 @@ class _ForumTabState extends ConsumerState<_ForumTab>
                               descController.text.trim(),
                               isPrivate,
                             );
-                        if (ok && context.mounted) {
-                          Navigator.pop(context);
+                        if (context.mounted) {
+                          if (ok) {
+                            Navigator.pop(context);
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Gagal membuat forum. Coba lagi.'),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
                         }
                       }
                     },

@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lottie/lottie.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../../core/theme/app_colors.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -20,10 +22,19 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   Future<void> _navigateToHome() async {
-    await Future.delayed(const Duration(seconds: 2));
-    final authState = ref.read(authProvider);
+    await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
-    if (authState.isAuthenticated) {
+
+    // Wait for auth check to complete
+    final authState = ref.read(authProvider);
+    if (authState.isLoading) {
+      await Future.delayed(const Duration(seconds: 2));
+    }
+    if (!mounted) return;
+
+    final finalState = ref.read(authProvider);
+    if (!mounted) return;
+    if (finalState.isAuthenticated) {
       context.go('/');
     } else {
       context.go('/login');
@@ -38,7 +49,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Logo animation with enhanced visual appeal
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(32),
@@ -46,6 +56,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                   'assets/lottie/splash_logo.json',
                   fit: BoxFit.contain,
                   repeat: false,
+                  animate: true,
+                  errorBuilder: (context, error, stackTrace) => Icon(
+                    LucideIcons.messageSquare,
+                    size: 80,
+                    color: AppColors.lilac,
+                  ),
                 ),
               ),
             ),

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -144,23 +145,35 @@ class FeedNotifier extends StateNotifier<FeedState> {
     }
   }
 
-  Future<bool> createPost(String content, {String visibility = 'public'}) async {
+  Future<bool> createPost(String content, {String visibility = 'public', List<String>? filePaths}) async {
     try {
-      final response = await _apiClient.post('/posts', data: {
+      final data = <String, dynamic>{
         'content': content,
         'visibility': visibility == 'internal' ? 'private' : visibility,
-      });
+      };
 
+      if (filePaths != null && filePaths.isNotEmpty) {
+        final formData = FormData.fromMap({
+          ...data,
+          'media': filePaths.map((p) => MultipartFile.fromFileSync(p)).toList(),
+        });
+        final response = await _apiClient.post('/posts', data: formData);
+        if (response.data['success'] == true) {
+          final newPost = PostModel.fromJson(response.data['data']);
+          state = state.copyWith(posts: [newPost, ...state.posts]);
+          return true;
+        }
+        return false;
+      }
+
+      final response = await _apiClient.post('/posts', data: data);
       if (response.data['success'] == true) {
         final newPost = PostModel.fromJson(response.data['data']);
-        state = state.copyWith(
-          posts: [newPost, ...state.posts],
-        );
+        state = state.copyWith(posts: [newPost, ...state.posts]);
         return true;
       }
       return false;
     } catch (e) {
-      // ignore: avoid_print
       print('[createPost error] $e');
       return false;
     }

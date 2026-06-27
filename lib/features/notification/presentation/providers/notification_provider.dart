@@ -159,20 +159,22 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
         final raw = response.data['data'];
         final count = (raw is Map) ? (raw['count'] ?? raw['unread_count'] ?? 0) : 0;
         final prevCount = state.unreadCount;
-        if (count > prevCount && state.notifications.isNotEmpty) {
-          await _showLocalNotificationForNew();
+        if (count > prevCount) {
+          final newCount = count - prevCount;
+          await _showNotificationForNew(newCount);
+          await loadNotifications();
         }
         state = state.copyWith(unreadCount: count);
       }
     } catch (_) {}
   }
 
-  Future<void> _showLocalNotificationForNew() async {
+  Future<void> _showNotificationForNew(int newCount) async {
     try {
       final response = await _apiClient.get('/notifications', queryParameters: {'limit': '1'});
       if (response.data['success'] == true) {
-        final list = response.data['data'] as List;
-        if (list.isNotEmpty) {
+        final list = response.data['data'] as List?;
+        if (list != null && list.isNotEmpty) {
           final notif = NotificationModel.fromJson(list[0]);
           if (!state.seenIds.contains(notif.id)) {
             final newSeen = Set<String>.from(state.seenIds)..add(notif.id);

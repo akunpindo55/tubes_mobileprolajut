@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/api_client.dart';
@@ -50,6 +51,7 @@ class MessageModel {
   final Map<String, dynamic>? sender;
   final List<dynamic> reads;
   final String createdAt;
+  final bool isSending;
 
   MessageModel({
     required this.id,
@@ -63,6 +65,7 @@ class MessageModel {
     this.sender,
     this.reads = const [],
     required this.createdAt,
+    this.isSending = false,
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json) {
@@ -78,6 +81,37 @@ class MessageModel {
       sender: json['sender'],
       reads: json['reads'] ?? [],
       createdAt: json['created_at'],
+      isSending: json['is_sending'] == true,
+    );
+  }
+
+  MessageModel copyWith({
+    int? id,
+    int? conversationId,
+    int? senderId,
+    String? messageType,
+    String? body,
+    String? fileUrl,
+    int? replyTo,
+    Map<String, dynamic>? replyToMessage,
+    Map<String, dynamic>? sender,
+    List<dynamic>? reads,
+    String? createdAt,
+    bool? isSending,
+  }) {
+    return MessageModel(
+      id: id ?? this.id,
+      conversationId: conversationId ?? this.conversationId,
+      senderId: senderId ?? this.senderId,
+      messageType: messageType ?? this.messageType,
+      body: body ?? this.body,
+      fileUrl: fileUrl ?? this.fileUrl,
+      replyTo: replyTo ?? this.replyTo,
+      replyToMessage: replyToMessage ?? this.replyToMessage,
+      sender: sender ?? this.sender,
+      reads: reads ?? this.reads,
+      createdAt: createdAt ?? this.createdAt,
+      isSending: isSending ?? this.isSending,
     );
   }
 }
@@ -106,8 +140,10 @@ class ChatState {
   }) {
     return ChatState(
       conversations: conversations ?? this.conversations,
-      messagesByConversation: messagesByConversation ?? this.messagesByConversation,
-      nextCursorByConversation: nextCursorByConversation ?? this.nextCursorByConversation,
+      messagesByConversation:
+          messagesByConversation ?? this.messagesByConversation,
+      nextCursorByConversation:
+          nextCursorByConversation ?? this.nextCursorByConversation,
       isLoading: isLoading ?? this.isLoading,
       errorMessage: errorMessage,
     );
@@ -119,51 +155,77 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   ChatNotifier(this._apiClient) : super(const ChatState());
 
-  Future<void> sendMessage(int conversationId, String text, {String type = 'text', int? replyTo}) async {
+  Future<void> sendMessage(
+    int conversationId,
+    String text, {
+    String type = 'text',
+    int? replyTo,
+    int? senderId,
+    String? filePath,
+  }) async {
+    // Prepare request data and optimistic message before network call
+    final data = <String, dynamic>{'message_type': type, 'body': text};
+    if (replyTo != null) {
+      data['reply_to'] = replyTo;
+    }
+
+    final fileUrl = filePath != null ? filePath : null;
+
+    // Create a temporary optimistic message with sending state
+    final tempId = DateTime.now().millisecondsSinceEpoch * -1;
+    final tempMessage = MessageModel(
+      id: tempId,
+      conversationId: conversationId,
+      senderId: senderId ?? 0,
+      messageType: type,
+      body: text,
+      fileUrl: fileUrl,
+      createdAt: DateTime.now().toIso8601String(),
+      isSending: true,
+    );
+
     try {
-      final data = <String, dynamic>{
-        'message_type': type,
-        'body': text,
-      };
-      if (replyTo != null) {
-        data['reply_to'] = replyTo;
-      }
-      
-      // Show loading indicator/local feedback
-      state = state.copyWith(isLoading: true, errorMessage: null);
-      
+      // Show sending state immediately
+      _appendMessage(conversationId, tempMessage);
+
       // Trigger haptic feedback for sending message
       HapticFeedback.lightImpact();
-      
+
       final response = await _apiClient.post(
         '/conversations/$conversationId/messages',
-        data: data,
+        data: filePath != null
+            ? FormData.fromMap({
+                ...data,
+                'file': MultipartFile.fromFileSync(filePath),
+              })
+            : data,
       );
 
       if (response.data['success'] == true) {
         final newMessage = MessageModel.fromJson(response.data['data']);
-        
-        // Append locally
-        _appendMessage(conversationId, newMessage);
-        
+
+        // Replace temporary message with real one
+        _replaceMessage(conversationId, tempId, newMessage);
+
         // Show success feedback (animation + sound)
         await _showMessageSentFeedback(conversationId, newMessage);
-        
-        // Show local notification for new message
-        await _showNewMessageNotification(conversationId, newMessage);
       }
     } catch (e) {
-      state = state.copyWith(isLoading: false, errorMessage: e.toString());
+      // Show error and keep message with error state
+      _markMessageError(conversationId, tempId);
       // Show error feedback
       _showMessageErrorFeedback();
     }
   }
 
-  Future<void> _showMessageSentFeedback(int conversationId, MessageModel message) async {
+  Future<void> _showMessageSentFeedback(
+    int conversationId,
+    MessageModel message,
+  ) async {
     try {
       // Animate the message bubble with a "sent" animation
       await Future.delayed(const Duration(milliseconds: 200));
-      
+
       // Update conversation last message with sent status
       final newConversations = state.conversations.map((c) {
         if (c.id == conversationId) {
@@ -184,12 +246,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
         }
         return c;
       }).toList();
-      
-      state = state.copyWith(
-        conversations: newConversations,
-        isLoading: false,
-      );
-      
+
+      state = state.copyWith(conversations: newConversations, isLoading: false);
+
       // Trigger animation for the message bubble
       _triggerMessageAnimation(conversationId);
     } catch (_) {
@@ -199,11 +258,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   Future<void> _showMessageErrorFeedback() async {
     try {
-      // Show a snackbar or toast indicating the message sending failed
-      // In a real app, this would show a Snackbar with retry option
       await Future.delayed(const Duration(milliseconds: 500));
-      
-      // Reset loading state
       state = state.copyWith(isLoading: false);
     } catch (_) {}
   }
@@ -216,18 +271,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(isLoading: false);
   }
 
-  Future<void> _showNewMessageNotification(int conversationId, MessageModel message) async {
-    try {
-      await _apiClient.post('/notifications', data: {
-        'type': 'message',
-        'conversation_id': conversationId,
-        'message_id': message.id,
-        'title': 'Pesan baru',
-        'body': message.body ?? 'Mengirim file',
-      });
-    } catch (_) {}
-  }
-
   Future<void> loadConversations() async {
     try {
       state = state.copyWith(isLoading: true);
@@ -235,7 +278,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
       if (response.data['success'] == true) {
         final List<dynamic> data = response.data['data'] ?? [];
         state = state.copyWith(
-          conversations: data.map((e) => ConversationModel.fromJson(e)).toList(),
+          conversations: data
+              .map((e) => ConversationModel.fromJson(e))
+              .toList(),
           isLoading: false,
         );
       } else {
@@ -248,14 +293,20 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   Future<void> loadMessages(int conversationId) async {
     try {
-      final current = Map<int, List<MessageModel>>.from(state.messagesByConversation);
+      final current = Map<int, List<MessageModel>>.from(
+        state.messagesByConversation,
+      );
       current[conversationId] = [];
       state = state.copyWith(messagesByConversation: current);
-      final response = await _apiClient.get('/conversations/$conversationId/messages');
+      final response = await _apiClient.get(
+        '/conversations/$conversationId/messages',
+      );
       if (response.data['success'] == true) {
         final List<dynamic> data = response.data['data'] ?? [];
         final messages = data.map((e) => MessageModel.fromJson(e)).toList();
-        final newMap = Map<int, List<MessageModel>>.from(state.messagesByConversation);
+        final newMap = Map<int, List<MessageModel>>.from(
+          state.messagesByConversation,
+        );
         newMap[conversationId] = messages;
         state = state.copyWith(messagesByConversation: newMap);
       }
@@ -266,10 +317,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   Future<void> startConversation(int targetUserId) async {
     try {
-      final response = await _apiClient.post('/conversations', data: {
-        'type': 'direct',
-        'target_user_id': targetUserId,
-      });
+      final response = await _apiClient.post(
+        '/conversations',
+        data: {'type': 'direct', 'target_user_id': targetUserId},
+      );
 
       if (response.data['success'] == true) {
         // Refresh conversations list
@@ -348,7 +399,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
     try {
       final response = await _apiClient.delete('/messages/$messageId');
       if (response.data['success'] == true) {
-        final newMessages = Map<int, List<MessageModel>>.from(state.messagesByConversation);
+        final newMessages = Map<int, List<MessageModel>>.from(
+          state.messagesByConversation,
+        );
         final list = newMessages[conversationId] != null
             ? List<MessageModel>.from(newMessages[conversationId]!)
             : <MessageModel>[];
@@ -370,17 +423,22 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   // Handle incoming socket message locally
-  void handleIncomingMessage(int conversationId, Map<String, dynamic> messageJson) {
+  void handleIncomingMessage(
+    int conversationId,
+    Map<String, dynamic> messageJson,
+  ) {
     final message = MessageModel.fromJson(messageJson);
     _appendMessage(conversationId, message);
   }
 
   void _appendMessage(int conversationId, MessageModel message) {
-    final newMessages = Map<int, List<MessageModel>>.from(state.messagesByConversation);
+    final newMessages = Map<int, List<MessageModel>>.from(
+      state.messagesByConversation,
+    );
     final list = newMessages[conversationId] != null
         ? List<MessageModel>.from(newMessages[conversationId]!)
         : <MessageModel>[];
-    
+
     // Avoid duplicates
     if (!list.any((m) => m.id == message.id)) {
       list.insert(0, message); // latest first
@@ -410,6 +468,63 @@ class ChatNotifier extends StateNotifier<ChatState> {
         messagesByConversation: newMessages,
         conversations: newConversations,
       );
+    }
+  }
+
+  void _replaceMessage(int conversationId, int oldId, MessageModel newMessage) {
+    final newMessages = Map<int, List<MessageModel>>.from(
+      state.messagesByConversation,
+    );
+    final list = newMessages[conversationId] != null
+        ? List<MessageModel>.from(newMessages[conversationId]!)
+        : <MessageModel>[];
+
+    final index = list.indexWhere((m) => m.id == oldId);
+    if (index != -1) {
+      list[index] = newMessage;
+      newMessages[conversationId] = list;
+
+      // Update last message in conversation list
+      final newConversations = state.conversations.map((c) {
+        if (c.id == conversationId) {
+          return ConversationModel(
+            id: c.id,
+            name: c.name,
+            description: c.description,
+            type: c.type,
+            createdBy: c.createdBy,
+            avatar: c.avatar,
+            lastMessage: {
+              'body': newMessage.body,
+              'created_at': newMessage.createdAt,
+              'status': 'sent',
+            },
+            members: c.members,
+          );
+        }
+        return c;
+      }).toList();
+
+      state = state.copyWith(
+        messagesByConversation: newMessages,
+        conversations: newConversations,
+      );
+    }
+  }
+
+  void _markMessageError(int conversationId, int messageId) {
+    final newMessages = Map<int, List<MessageModel>>.from(
+      state.messagesByConversation,
+    );
+    final list = newMessages[conversationId] != null
+        ? List<MessageModel>.from(newMessages[conversationId]!)
+        : <MessageModel>[];
+
+    final index = list.indexWhere((m) => m.id == messageId);
+    if (index != -1) {
+      list[index] = list[index].copyWith(isSending: false);
+      newMessages[conversationId] = list;
+      state = state.copyWith(messagesByConversation: newMessages);
     }
   }
 }

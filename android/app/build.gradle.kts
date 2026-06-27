@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.campusconnect.campus_connect"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
