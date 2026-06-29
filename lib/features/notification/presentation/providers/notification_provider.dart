@@ -58,6 +58,8 @@ class NotificationModel {
         return 'Undangan Forum';
       case 'forum_kick':
         return 'Dikeluarkan dari Forum';
+      case 'forum_reply':
+        return 'Balasan Baru di Forum';
       default:
         return data['title'] ?? 'Notifikasi Baru';
     }
@@ -77,6 +79,8 @@ class NotificationModel {
         return 'Anda diundang ke forum ${data['forum_name'] ?? ''}';
       case 'forum_kick':
         return 'Anda telah dikeluarkan dari forum ${data['forum_name'] ?? ''}';
+      case 'forum_reply':
+        return '${data['reply_by_name'] ?? 'Seseorang'} membalas topik "${data['topic_title'] ?? ''}"';
       default:
         return data['message'] ?? data['body'] ?? '';
     }

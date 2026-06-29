@@ -9,6 +9,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
+import 'package:shimmer/shimmer.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/clay_widgets.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -510,9 +511,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         children: [
           Expanded(
             child: chatState.isLoading && messages.isEmpty
-                ? const Center(
-                    child: CircularProgressIndicator(color: AppColors.babyBlue),
-                  )
+                ? _buildChatShimmerLoader()
                 : messages.isEmpty
                 ? Center(
                     child: Text(
@@ -905,6 +904,55 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildChatShimmerLoader() {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: ListView.builder(
+        reverse: true,
+        itemCount: 6,
+        padding: const EdgeInsets.all(16),
+        itemBuilder: (context, index) {
+          final isMe = index % 2 == 0;
+          final bubbleWidth = isMe ? 200.0 : 150.0;
+          final alignment = isMe ? Alignment.centerRight : Alignment.centerLeft;
+          return Align(
+            alignment: alignment,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 12.0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (!isMe) ...[
+                    const CircleAvatar(
+                      backgroundColor: Colors.white,
+                      radius: 14,
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Container(
+                    width: bubbleWidth,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(16),
+                        topRight: const Radius.circular(16),
+                        bottomLeft: Radius.circular(isMe ? 16 : 4),
+                        bottomRight: Radius.circular(isMe ? 4 : 16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 

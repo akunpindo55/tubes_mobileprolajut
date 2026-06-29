@@ -158,6 +158,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Password berhasil diubah!')),
                       );
+                    } else if (mounted) {
+                      final error = ref.read(profileProvider).errorMessage ?? 'Gagal mengubah password.';
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(error),
+                          backgroundColor: Colors.redAccent,
+                        ),
+                      );
                     }
                   }
                 },

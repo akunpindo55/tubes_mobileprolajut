@@ -181,6 +181,7 @@ class NotificationScreen extends ConsumerWidget {
       case 'message':
         return LucideIcons.messageSquare;
       case 'post_comment':
+      case 'forum_reply':
         return LucideIcons.messageCircle;
       case 'post_reaction':
         return LucideIcons.heart;

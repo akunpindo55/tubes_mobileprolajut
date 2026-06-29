@@ -240,6 +240,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
               'body': message.body,
               'created_at': message.createdAt,
               'status': 'sent',
+              'message_type': message.messageType,
             },
             members: c.members,
           );
@@ -457,6 +458,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
             lastMessage: {
               'body': message.body,
               'created_at': message.createdAt,
+              'message_type': message.messageType,
             },
             members: c.members,
           );
@@ -498,6 +500,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
               'body': newMessage.body,
               'created_at': newMessage.createdAt,
               'status': 'sent',
+              'message_type': newMessage.messageType,
             },
             members: c.members,
           );

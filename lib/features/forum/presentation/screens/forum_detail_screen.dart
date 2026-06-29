@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:shimmer/shimmer.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/clay_widgets.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -259,6 +260,9 @@ class _ForumDetailScreenState extends ConsumerState<ForumDetailScreen> {
     );
 
     final topics = forumState.topicsByForum[widget.forumId] ?? [];
+    final authState = ref.watch(authProvider);
+    final currentUserId = authState.user?['id'] as int?;
+    final isOwner = forum.createdBy == currentUserId;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -278,23 +282,118 @@ class _ForumDetailScreenState extends ConsumerState<ForumDetailScreen> {
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(LucideIcons.userPlus, color: AppColors.mint),
-            onPressed: _showInviteUserDialog,
-            tooltip: 'Undang Anggota',
-          ),
-          IconButton(
-            icon: const Icon(LucideIcons.logOut, color: Colors.redAccent),
-            onPressed: () async {
-              final navigator = GoRouter.of(context);
-              final ok = await ref
-                  .read(forumProvider.notifier)
-                  .leaveForum(widget.forumId);
-              if (ok && mounted) {
-                navigator.pop();
+          PopupMenuButton<String>(
+            icon: const Icon(LucideIcons.moreVertical, color: AppColors.textDark),
+            onSelected: (value) async {
+              if (value == 'invite') {
+                _showInviteUserDialog();
+              } else if (value == 'leave') {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Keluar dari Forum'),
+                    content: const Text(
+                      'Apakah Anda yakin ingin keluar dari forum ini?',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Batal'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.redAccent,
+                        ),
+                        child: const Text('Keluar'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true && mounted) {
+                  final ok = await ref
+                      .read(forumProvider.notifier)
+                      .leaveForum(widget.forumId);
+                  if (ok && mounted) {
+                    context.pop();
+                  }
+                }
+              } else if (value == 'delete') {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Hapus Forum'),
+                    content: const Text(
+                      'Apakah Anda yakin ingin menghapus forum ini secara permanen? Semua topik dan komentar di dalamnya juga akan terhapus.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Batal'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.redAccent,
+                        ),
+                        child: const Text('Hapus'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true && mounted) {
+                  final ok = await ref
+                      .read(forumProvider.notifier)
+                      .deleteForum(widget.forumId);
+                  if (ok && mounted) {
+                    context.pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Forum berhasil dihapus.'),
+                      ),
+                    );
+                  } else if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Gagal menghapus forum.'),
+                        backgroundColor: Colors.redAccent,
+                      ),
+                    );
+                  }
+                }
               }
             },
-            tooltip: 'Keluar Forum',
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'invite',
+                child: ListTile(
+                  leading: Icon(LucideIcons.userPlus, color: AppColors.textDark),
+                  title: Text('Undang Anggota'),
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              if (!isOwner)
+                const PopupMenuItem(
+                  value: 'leave',
+                  child: ListTile(
+                    leading: Icon(LucideIcons.logOut, color: Colors.redAccent),
+                    title: Text('Keluar Forum', style: TextStyle(color: Colors.redAccent)),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              if (isOwner)
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: ListTile(
+                    leading: Icon(LucideIcons.trash2, color: Colors.redAccent),
+                    title: Text('Hapus Forum', style: TextStyle(color: Colors.redAccent)),
+                    contentPadding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+            ],
           ),
         ],
       ),
@@ -356,8 +455,41 @@ class _ForumDetailScreenState extends ConsumerState<ForumDetailScreen> {
           // Discussion Topics list
           Expanded(
             child: forumState.isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: AppColors.mint),
+                ? _buildTopicsShimmerLoader()
+                : forumState.errorMessage != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(LucideIcons.alertCircle, color: Colors.redAccent, size: 40),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Gagal memuat topik:',
+                            style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: Colors.redAccent),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            forumState.errorMessage!,
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.outfit(color: AppColors.textMuted, fontSize: 13),
+                          ),
+                          const SizedBox(height: 16),
+                          ClayButton(
+                            color: AppColors.mint,
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                            onTap: () => ref
+                                .read(forumProvider.notifier)
+                                .loadTopics(widget.forumId),
+                            child: Text(
+                              'Coba Lagi',
+                              style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   )
                 : topics.isEmpty
                 ? Center(
@@ -466,6 +598,29 @@ class _ForumDetailScreenState extends ConsumerState<ForumDetailScreen> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTopicsShimmerLoader() {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: 3,
+        itemBuilder: (context, index) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12.0),
+            child: Container(
+              height: 120,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

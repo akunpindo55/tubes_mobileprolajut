@@ -1135,9 +1135,19 @@ class _ChatTab extends ConsumerWidget {
                           itemCount: chatState.conversations.length,
                           itemBuilder: (context, index) {
                             final convo = chatState.conversations[index];
-                            final lastMsg =
-                                convo.lastMessage?['body'] ??
-                                'Belum ada pesan.';
+                            final lastMsgMap = convo.lastMessage;
+                            String lastMsg = 'Belum ada pesan.';
+                            if (lastMsgMap != null) {
+                              final body = lastMsgMap['body']?.toString();
+                              final type = lastMsgMap['message_type']?.toString();
+                              if (type == 'image') {
+                                lastMsg = '📷 Gambar';
+                              } else if (type == 'file') {
+                                lastMsg = '📁 File lampiran';
+                              } else if (body != null && body.trim().isNotEmpty) {
+                                lastMsg = body;
+                              }
+                            }
 
                             return Container(
                               margin: const EdgeInsets.only(bottom: 12),
@@ -1417,6 +1427,48 @@ class _ForumTabState extends ConsumerState<_ForumTab>
     final forumState = ref.watch(forumProvider);
 
     if (forumState.isLoading) return _buildShimmerLoader();
+
+    if (forumState.errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(LucideIcons.alertCircle, color: Colors.redAccent, size: 48),
+              const SizedBox(height: 16),
+              Text(
+                'Gagal Memuat Forum',
+                style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                forumState.errorMessage!,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.outfit(color: AppColors.textMuted, fontSize: 13),
+              ),
+              const SizedBox(height: 20),
+              ClayButton(
+                color: AppColors.mint,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                onTap: () {
+                  ref.read(forumProvider.notifier).loadMyForums();
+                  ref.read(forumProvider.notifier).loadPublicForums();
+                },
+                child: Text(
+                  'Coba Lagi',
+                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     if (list.isEmpty) {
       return Center(

@@ -3,6 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:shimmer/shimmer.dart';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/clay_widgets.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -21,6 +28,8 @@ class _TopicDetailScreenState extends ConsumerState<TopicDetailScreen> {
   final _commentController = TextEditingController();
   int? _replyingToCommentId;
   String? _replyingToUsername;
+  String? _selectedFilePath;
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -38,19 +47,32 @@ class _TopicDetailScreenState extends ConsumerState<TopicDetailScreen> {
 
   void _submitComment() async {
     final text = _commentController.text.trim();
-    if (text.isNotEmpty) {
-      final ok = await ref
-          .read(forumProvider.notifier)
-          .replyTopic(
-            widget.topicId,
-            text,
-            parentCommentId: _replyingToCommentId,
-          );
-      if (ok && mounted) {
+    if (text.isEmpty && _selectedFilePath == null) return;
+    if (_isSubmitting) return;
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    final ok = await ref
+        .read(forumProvider.notifier)
+        .replyTopic(
+          widget.topicId,
+          text,
+          parentCommentId: _replyingToCommentId,
+          filePath: _selectedFilePath,
+        );
+
+    if (mounted) {
+      setState(() {
+        _isSubmitting = false;
+      });
+      if (ok) {
         _commentController.clear();
         setState(() {
           _replyingToCommentId = null;
           _replyingToUsername = null;
+          _selectedFilePath = null;
         });
       }
     }
@@ -80,8 +102,41 @@ class _TopicDetailScreenState extends ConsumerState<TopicDetailScreen> {
         ),
       ),
       body: forumState.isLoading && topic == null
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.mint),
+          ? _buildTopicShimmerLoader()
+          : forumState.errorMessage != null && topic == null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(LucideIcons.alertCircle, color: Colors.redAccent, size: 40),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Gagal memuat detail topik:',
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: Colors.redAccent),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      forumState.errorMessage!,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.outfit(color: AppColors.textMuted, fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+                    ClayButton(
+                      color: AppColors.mint,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      onTap: () => ref
+                          .read(forumProvider.notifier)
+                          .loadTopicDetail(widget.topicId),
+                      child: Text(
+                        'Coba Lagi',
+                        style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             )
           : topic == null
           ? Center(
@@ -153,14 +208,18 @@ class _TopicDetailScreenState extends ConsumerState<TopicDetailScreen> {
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              Text(
-                                topic.content,
-                                style: GoogleFonts.outfit(
-                                  fontSize: 15,
-                                  height: 1.45,
-                                  color: AppColors.textDark,
-                                ),
-                              ),
+                               Text(
+                                 topic.content,
+                                 style: GoogleFonts.outfit(
+                                   fontSize: 15,
+                                   height: 1.45,
+                                   color: AppColors.textDark,
+                                 ),
+                               ),
+                               if (topic.fileUrl != null) ...[
+                                 const SizedBox(height: 12),
+                                 _buildMessageFilePreview(topic.fileUrl!),
+                               ],
                             ],
                           ),
                         ),
@@ -259,8 +318,50 @@ class _TopicDetailScreenState extends ConsumerState<TopicDetailScreen> {
                             ),
                           ),
                         ],
+                        if (_selectedFilePath != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              children: [
+                                const Icon(LucideIcons.paperclip, size: 14, color: AppColors.lilac),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    _selectedFilePath!.split('/').last,
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 12,
+                                      color: AppColors.textMuted,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: () => setState(() => _selectedFilePath = null),
+                                  child: const Icon(LucideIcons.x, size: 14, color: AppColors.textMuted),
+                                ),
+                              ],
+                            ),
+                          ),
                         Row(
                           children: [
+                            IconButton(
+                              icon: const Icon(
+                                LucideIcons.paperclip,
+                                color: AppColors.textMuted,
+                                size: 20,
+                              ),
+                              onPressed: () async {
+                                final result = await FilePicker.platform.pickFiles(
+                                  type: FileType.any,
+                                );
+                                if (result != null && result.files.single.path != null) {
+                                  setState(() {
+                                    _selectedFilePath = result.files.single.path;
+                                  });
+                                }
+                              },
+                            ),
+                            const SizedBox(width: 4),
                             Expanded(
                               child: TextFormField(
                                 controller: _commentController,
@@ -308,14 +409,25 @@ class _TopicDetailScreenState extends ConsumerState<TopicDetailScreen> {
                               borderRadius: 16,
                               width: 48,
                               height: 48,
-                              child: IconButton(
-                                icon: const Icon(
-                                  LucideIcons.send,
-                                  color: AppColors.textDark,
-                                  size: 20,
-                                ),
-                                onPressed: _submitComment,
-                              ),
+                              child: _isSubmitting
+                                  ? const Center(
+                                      child: SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          color: AppColors.textDark,
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                    )
+                                  : IconButton(
+                                      icon: const Icon(
+                                        LucideIcons.send,
+                                        color: AppColors.textDark,
+                                        size: 20,
+                                      ),
+                                      onPressed: _submitComment,
+                                    ),
                             ),
                           ],
                         ),
@@ -451,13 +563,17 @@ class _TopicDetailScreenState extends ConsumerState<TopicDetailScreen> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  comment.content,
-                  style: GoogleFonts.outfit(
-                    fontSize: 13.5,
-                    color: AppColors.textDark,
-                  ),
-                ),
+                 Text(
+                   comment.content,
+                   style: GoogleFonts.outfit(
+                     fontSize: 13.5,
+                     color: AppColors.textDark,
+                   ),
+                 ),
+                 if (comment.fileUrl != null) ...[
+                   const SizedBox(height: 8),
+                   _buildMessageFilePreview(comment.fileUrl!),
+                 ],
               ],
             ),
           ),
@@ -468,6 +584,225 @@ class _TopicDetailScreenState extends ConsumerState<TopicDetailScreen> {
             (reply) => _buildCommentNode(reply, depth: depth + 1),
           ),
       ],
+    );
+  }
+
+  Widget _buildTopicShimmerLoader() {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // Main Thread Skeleton Card
+          Container(
+            height: 180,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+            ),
+          ),
+          const SizedBox(height: 24),
+          // Comments Header
+          Container(
+            width: 120,
+            height: 18,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Comments list skeleton
+          ...List.generate(3, (index) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const CircleAvatar(
+                    backgroundColor: Colors.white,
+                    radius: 16,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 100,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          width: double.infinity,
+                          height: 54,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  void _showImagePreview(BuildContext context, String imageUrl) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              child: Image.network(imageUrl, fit: BoxFit.contain),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageFilePreview(String url) {
+    final isImage = RegExp(r'\.(jpe?g|png|gif|bmp|webp)$', caseSensitive: false).hasMatch(url);
+    final fileName = url.split('/').last;
+
+    if (isImage) {
+      return GestureDetector(
+        onTap: () => _showImagePreview(context, url),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.network(
+            url,
+            width: 200,
+            height: 150,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _buildFilePlaceholder(fileName),
+          ),
+        ),
+      );
+    } else {
+      return GestureDetector(
+        onTap: () async {
+          try {
+            final tempDir = await getTemporaryDirectory();
+            final file = File('${tempDir.path}/$fileName');
+
+            final dio = Dio();
+            final response = await dio.get(
+              url,
+              options: Options(responseType: ResponseType.bytes),
+            );
+
+            if (response.data != null) {
+              await file.writeAsBytes(response.data as List<int>);
+            } else {
+              throw Exception('Data kosong');
+            }
+
+            if (context.mounted) {
+              await showModalBottomSheet(
+                context: context,
+                builder: (ctx) => SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(fileName, style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+                        const Divider(),
+                        ListTile(
+                          leading: const Icon(LucideIcons.download, color: AppColors.lilac),
+                          title: const Text('Buka dengan aplikasi terkait'),
+                          onTap: () async {
+                            final openResult = await OpenFilex.open(file.path);
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (openResult.type != ResultType.done && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Gagal membuka file: ${openResult.message}')),
+                              );
+                            }
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(LucideIcons.copy, color: AppColors.lilac),
+                          title: const Text('Salin URL'),
+                          onTap: () async {
+                            await Clipboard.setData(ClipboardData(text: url));
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('URL tersalin!')),
+                              );
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+          } catch (e) {
+            if (context.mounted) {
+              showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: Text(fileName),
+                  content: Text('Gagal mengunduh file: $e'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tutup')),
+                  ],
+                ),
+              );
+            }
+          }
+        },
+        child: _buildFilePlaceholder(fileName),
+      );
+    }
+  }
+
+  Widget _buildFilePlaceholder(String fileName) {
+    return Container(
+      width: 200,
+      height: 60,
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(LucideIcons.file, size: 24, color: AppColors.textMuted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              fileName,
+              style: GoogleFonts.outfit(
+                fontSize: 12,
+                color: AppColors.textDark,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

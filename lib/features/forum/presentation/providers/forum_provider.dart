@@ -1,6 +1,20 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+
+String _handleError(dynamic e) {
+  if (e is DioException) {
+    if (e.response != null && e.response!.data is Map) {
+      final data = e.response!.data as Map;
+      if (data.containsKey('message')) {
+        return data['message'].toString();
+      }
+    }
+    return e.message ?? e.toString();
+  }
+  return e.toString();
+}
 
 class ForumModel {
   final int id;
@@ -21,12 +35,19 @@ class ForumModel {
 
   factory ForumModel.fromJson(Map<String, dynamic> json) {
     return ForumModel(
-      id: json['id'],
-      name: json['name'],
-      description: json['description'],
-      isPrivate: json['is_private'] == true || json['is_private'] == 1,
-      createdBy: json['created_by'] ?? 0,
-      createdAt: json['created_at'] ?? '',
+      id: json['id'] is int ? json['id'] as int : int.tryParse(json['id']?.toString() ?? '') ?? 0,
+      name: json['name']?.toString() ?? '',
+      description: json['description']?.toString(),
+      isPrivate: json['is_private'] == true ||
+          json['is_private'] == 1 ||
+          json['is_private']?.toString() == '1' ||
+          json['is_private']?.toString() == 'true',
+      createdBy: json['created_by'] is int
+          ? json['created_by'] as int
+          : (json['created_by'] is Map 
+              ? (json['created_by']['id'] is int ? json['created_by']['id'] as int : int.tryParse(json['created_by']['id']?.toString() ?? '') ?? 0)
+              : int.tryParse(json['created_by']?.toString() ?? '') ?? 0),
+      createdAt: json['created_at']?.toString() ?? '',
     );
   }
 }
@@ -40,6 +61,8 @@ class TopicModel {
   final Map<String, dynamic> user;
   final String createdAt;
   final List<ForumCommentModel>? comments;
+  final String? fileUrl;
+  final String? mediaType;
 
   TopicModel({
     required this.id,
@@ -50,6 +73,8 @@ class TopicModel {
     required this.user,
     required this.createdAt,
     this.comments,
+    this.fileUrl,
+    this.mediaType,
   });
 
   factory TopicModel.fromJson(Map<String, dynamic> json) {
@@ -60,14 +85,16 @@ class TopicModel {
       commentList = rawComments.map((c) => ForumCommentModel.fromJson(c)).toList();
     }
     return TopicModel(
-      id: json['id'],
-      forumId: json['forum_id'] ?? 0,
-      title: json['title'] ?? '',
-      content: json['content'] ?? '',
-      userId: userData['id'] as int? ?? json['user_id'] as int? ?? 0,
+      id: json['id'] is int ? json['id'] as int : int.tryParse(json['id']?.toString() ?? '') ?? 0,
+      forumId: json['forum_id'] is int ? json['forum_id'] as int : int.tryParse(json['forum_id']?.toString() ?? '') ?? 0,
+      title: json['title']?.toString() ?? '',
+      content: json['content']?.toString() ?? '',
+      userId: userData['id'] as int? ?? (json['user_id'] is int ? json['user_id'] as int : int.tryParse(json['user_id']?.toString() ?? '') ?? 0),
       user: userData,
-      createdAt: json['created_at'] ?? '',
+      createdAt: json['created_at']?.toString() ?? '',
       comments: commentList,
+      fileUrl: json['file_url']?.toString(),
+      mediaType: json['media_type']?.toString(),
     );
   }
 }
@@ -81,6 +108,8 @@ class ForumCommentModel {
   final int? parentCommentId;
   final List<ForumCommentModel> replies;
   final String createdAt;
+  final String? fileUrl;
+  final String? mediaType;
 
   ForumCommentModel({
     required this.id,
@@ -91,6 +120,8 @@ class ForumCommentModel {
     this.parentCommentId,
     required this.replies,
     required this.createdAt,
+    this.fileUrl,
+    this.mediaType,
   });
 
   factory ForumCommentModel.fromJson(Map<String, dynamic> json) {
@@ -101,14 +132,16 @@ class ForumCommentModel {
       replyList = rawReplies.map((r) => ForumCommentModel.fromJson(r)).toList();
     }
     return ForumCommentModel(
-      id: json['id'],
-      topicId: json['topic_id'] ?? 0,
-      userId: userData['id'] as int? ?? json['user_id'] as int? ?? 0,
+      id: json['id'] is int ? json['id'] as int : int.tryParse(json['id']?.toString() ?? '') ?? 0,
+      topicId: json['topic_id'] is int ? json['topic_id'] as int : int.tryParse(json['topic_id']?.toString() ?? '') ?? 0,
+      userId: userData['id'] as int? ?? (json['user_id'] is int ? json['user_id'] as int : int.tryParse(json['user_id']?.toString() ?? '') ?? 0),
       user: userData,
-      content: json['content'] ?? '',
-      parentCommentId: json['parent_comment_id'],
+      content: json['content']?.toString() ?? '',
+      parentCommentId: json['parent_comment_id'] is int ? json['parent_comment_id'] as int : int.tryParse(json['parent_comment_id']?.toString() ?? ''),
       replies: replyList,
-      createdAt: json['created_at'] ?? '',
+      createdAt: json['created_at']?.toString() ?? '',
+      fileUrl: json['file_url']?.toString(),
+      mediaType: json['media_type']?.toString(),
     );
   }
 }
@@ -167,7 +200,8 @@ class ForumNotifier extends StateNotifier<ForumState> {
         state = state.copyWith(isLoading: false, errorMessage: response.data['message']);
       }
     } catch (e) {
-      state = state.copyWith(isLoading: false, errorMessage: e.toString());
+      print('[loadPublicForums] Exception: $e');
+      state = state.copyWith(isLoading: false, errorMessage: _handleError(e));
     }
   }
 
@@ -184,7 +218,8 @@ class ForumNotifier extends StateNotifier<ForumState> {
         state = state.copyWith(isLoading: false, errorMessage: response.data['message']);
       }
     } catch (e) {
-      state = state.copyWith(isLoading: false, errorMessage: e.toString());
+      print('[loadMyForums] Exception: $e');
+      state = state.copyWith(isLoading: false, errorMessage: _handleError(e));
     }
   }
 
@@ -193,7 +228,7 @@ class ForumNotifier extends StateNotifier<ForumState> {
       final response = await _apiClient.post('/forums', data: {
         'name': name,
         'description': description,
-        'is_private': isPrivate,
+        'is_private': isPrivate ? 1 : 0,
       });
 
       if (response.data['success'] == true) {
@@ -242,7 +277,7 @@ class ForumNotifier extends StateNotifier<ForumState> {
   }
 
   Future<void> loadTopics(int forumId) async {
-    state = state.copyWith(isLoading: true);
+    state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       final response = await _apiClient.get('/forums/$forumId/topics');
       if (response.data['success'] == true) {
@@ -258,19 +293,30 @@ class ForumNotifier extends StateNotifier<ForumState> {
           isLoading: false,
         );
       } else {
-        state = state.copyWith(isLoading: false);
+        state = state.copyWith(isLoading: false, errorMessage: response.data['message']);
       }
     } catch (e) {
-      state = state.copyWith(isLoading: false);
+      print('[loadTopics] Exception: $e');
+      state = state.copyWith(isLoading: false, errorMessage: _handleError(e));
     }
   }
 
-  Future<bool> createTopic(int forumId, String title, String content) async {
+  Future<bool> createTopic(int forumId, String title, String content, {String? filePath}) async {
     try {
-      final response = await _apiClient.post('/forums/$forumId/topics', data: {
+      final Map<String, dynamic> data = {
         'title': title,
         'content': content,
-      });
+      };
+
+      final response = await _apiClient.post(
+        '/forums/$forumId/topics',
+        data: filePath != null
+            ? FormData.fromMap({
+                ...data,
+                'file': MultipartFile.fromFileSync(filePath),
+              })
+            : data,
+      );
 
       if (response.data['success'] == true) {
         final newTopic = TopicModel.fromJson(response.data['data']);
@@ -291,8 +337,10 @@ class ForumNotifier extends StateNotifier<ForumState> {
     }
   }
 
-  Future<void> loadTopicDetail(int topicId) async {
-    state = state.copyWith(isLoading: true);
+  Future<void> loadTopicDetail(int topicId, {bool showLoading = true}) async {
+    if (showLoading) {
+      state = state.copyWith(isLoading: true, errorMessage: null);
+    }
     try {
       final response = await _apiClient.get('/topics/$topicId');
       if (response.data['success'] == true) {
@@ -306,10 +354,11 @@ class ForumNotifier extends StateNotifier<ForumState> {
           isLoading: false,
         );
       } else {
-        state = state.copyWith(isLoading: false);
+        state = state.copyWith(isLoading: false, errorMessage: response.data['message']);
       }
     } catch (e) {
-      state = state.copyWith(isLoading: false);
+      print('[loadTopicDetail] Exception: $e');
+      state = state.copyWith(isLoading: false, errorMessage: _handleError(e));
     }
   }
 
@@ -384,17 +433,46 @@ class ForumNotifier extends StateNotifier<ForumState> {
     }
   }
 
-  Future<bool> replyTopic(int topicId, String commentContent, {int? parentCommentId}) async {
+  Future<bool> deleteForum(int forumId) async {
     try {
-      final response = await _apiClient.post('/topics/$topicId/comments', data: {
+      final response = await _apiClient.delete('/forums/$forumId');
+      if (response.data['success'] == true) {
+        state = state.copyWith(
+          myForums: state.myForums.where((f) => f.id != forumId).toList(),
+          publicForums: state.publicForums.where((f) => f.id != forumId).toList(),
+        );
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('[deleteForum] Exception: $e');
+      if (e is DioException && e.response != null) {
+        print('[deleteForum] Response body: ${e.response?.data}');
+      }
+      return false;
+    }
+  }
+
+  Future<bool> replyTopic(int topicId, String commentContent, {int? parentCommentId, String? filePath}) async {
+    try {
+      final Map<String, dynamic> data = {
         'content': commentContent,
-        // ignore: use_null_aware_elements
         if (parentCommentId != null) 'parent_comment_id': parentCommentId,
-      });
+      };
+
+      final response = await _apiClient.post(
+        '/topics/$topicId/comments',
+        data: filePath != null
+            ? FormData.fromMap({
+                ...data,
+                'file': MultipartFile.fromFileSync(filePath),
+              })
+            : data,
+      );
 
       if (response.data['success'] == true) {
-        // Refresh topic detail to load the latest replies hierarchy correctly
-        await loadTopicDetail(topicId);
+        // Refresh topic detail to load the latest replies hierarchy correctly in the background
+        await loadTopicDetail(topicId, showLoading: false);
         return true;
       }
       return false;
